@@ -356,6 +356,8 @@ class PlaygroundWindow(QMainWindow):
 
     def _apply_theme(self, mode: str) -> None:
         normalized = apply_theme(self, theme_mode=mode)
+        for detached_window in list(self._detached_windows):
+            detached_window.apply_runtime_theme(normalized.theme_mode)
 
         index = self.theme_combo.findData(normalized.theme_mode)
         if index >= 0:

@@ -1992,11 +1992,11 @@ class StandaloneDemoWindow(QMainWindow):
         self._root_layout.addWidget(self._surface, 1)
         self.setCentralWidget(root)
 
-        self._apply_theme()
+        self.apply_runtime_theme()
         self._update_window_frame()
 
-    def _apply_theme(self) -> None:
-        apply_theme(self)
+    def apply_runtime_theme(self, mode: str | None = None) -> None:
+        apply_theme(self, theme_mode=mode)
 
     def _is_effectively_maximized(self) -> bool:
         return bool(self.windowState() & Qt.WindowState.WindowMaximized) or self.isFullScreen()
