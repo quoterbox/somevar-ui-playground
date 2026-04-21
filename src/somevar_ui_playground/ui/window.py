@@ -23,7 +23,7 @@ from somevar_ui_playground.ui.pages import (
     build_playground_categories,
     create_simple_message_panel,
 )
-from somevar_ui.ui.bootstrap import apply_theme, refresh_theme_tree
+from somevar_ui.ui.bootstrap import apply_theme_to_application, refresh_theme_tree
 from somevar_ui.ui.kit.containers import CenteredModalOverlay, MessagePanel
 from somevar_ui.ui.kit.widgets import (
     BadgeLabel,
@@ -355,9 +355,7 @@ class PlaygroundWindow(QMainWindow):
         self._apply_theme(mode)
 
     def _apply_theme(self, mode: str) -> None:
-        normalized = apply_theme(self, theme_mode=mode)
-        for detached_window in list(self._detached_windows):
-            detached_window.apply_runtime_theme(normalized.theme_mode)
+        normalized = apply_theme_to_application(theme_mode=mode)
 
         index = self.theme_combo.findData(normalized.theme_mode)
         if index >= 0:
