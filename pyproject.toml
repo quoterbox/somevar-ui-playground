@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "somevar-ui-playground"
+version = "0.1.0"
+description = "Demo playground application for SomeVar UI Kit."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "somevar-ui>=0.1,<0.2",
+    "markdown>=3.7,<4",
+    "Pygments>=2.18,<3",
+]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
+
+[project.scripts]
+somevar-ui-playground = "somevar_ui_playground.main:main"
+
+[project.optional-dependencies]
+dev = [
+    "PyInstaller>=6,<7",
+    "pytest>=8,<9",
+]
+
+[project.entry-points."somevar_ui.apps"]
+playground = "somevar_ui_playground.registration:create_app_registration"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+norecursedirs = ["artifacts", "build", "dist", ".venv", "__pycache__"]

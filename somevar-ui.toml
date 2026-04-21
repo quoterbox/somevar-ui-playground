@@ -1,0 +1,9 @@
+[app]
+id = "playground"
+title = "SomeVar UI Playground"
+entry = "somevar_ui_playground.main:main"
+
+[build]
+backend = "pyinstaller"
+mode = "onedir"
+artifact_name = "SomeVarUIPlayground"
