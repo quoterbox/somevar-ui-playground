@@ -23,14 +23,19 @@ from somevar_ui_playground.ui.pages import (
     build_playground_categories,
     create_simple_message_panel,
 )
-from somevar_ui.core.runtime_state import UiRuntimeState, get_ui_runtime_state, set_ui_runtime_state
+from somevar_ui.ui.bootstrap import apply_theme, refresh_theme_tree
 from somevar_ui.ui.kit.containers import CenteredModalOverlay, MessagePanel
-from somevar_ui.ui.kit.widgets import BadgeLabel, ComboBox, install_capsule_scrollbars
-from somevar_ui.ui.lists import PROJECT_COUNT_ROLE, PROJECT_TITLE_ROLE, ProjectItemDelegate
+from somevar_ui.ui.kit.widgets import (
+    BadgeLabel,
+    ComboBox,
+    PROJECT_COUNT_ROLE,
+    PROJECT_TITLE_ROLE,
+    ProjectItemDelegate,
+    install_capsule_scrollbars,
+)
 from somevar_ui.ui.platform import windows as win_platform
-from somevar_ui.ui.shell.titlebar import TitleBar
-from somevar_ui.ui.styles import build_stylesheet
-from somevar_ui.ui.theme import THEME, set_theme_mode
+from somevar_ui.ui.shell import TitleBar
+from somevar_ui.ui.theme import THEME
 
 S = THEME.spacing
 L = THEME.layout
@@ -339,7 +344,7 @@ class PlaygroundWindow(QMainWindow):
             return
         category = self._categories[row]
         self._category_stack.setCurrentIndex(row)
-        self._refresh_theme_tree(category.page)
+        refresh_theme_tree(category.page)
         self.hero_label.setText(category.title)
         demos_word = 'demo' if category.demo_count == 1 else 'demos'
         self.count_badge.setText(f'{category.demo_count} {demos_word}')
@@ -350,24 +355,7 @@ class PlaygroundWindow(QMainWindow):
         self._apply_theme(mode)
 
     def _apply_theme(self, mode: str) -> None:
-        state = get_ui_runtime_state()
-        normalized = set_ui_runtime_state(
-            UiRuntimeState(
-                reduce_motion=state.reduce_motion,
-                ui_scale_percent=state.ui_scale_percent,
-                theme_mode=mode,
-            )
-        )
-        set_theme_mode(normalized.theme_mode)
-        self.setStyleSheet(build_stylesheet(normalized.ui_scale_percent, normalized.theme_mode))
-        install_capsule_scrollbars(self)
-        self._refresh_theme_tree(self.title_bar)
-        self._refresh_theme_tree(self.count_badge)
-        current_page = self._current_category_page()
-        if current_page is not None:
-            self._refresh_theme_tree(current_page)
-        if self._modal_overlay is not None:
-            self._refresh_theme_tree(self._modal_overlay)
+        normalized = apply_theme(self, theme_mode=mode)
 
         index = self.theme_combo.findData(normalized.theme_mode)
         if index >= 0:
@@ -420,23 +408,6 @@ class PlaygroundWindow(QMainWindow):
         style.unpolish(widget)
         style.polish(widget)
         widget.update()
-
-    def _refresh_theme_tree(self, root: QWidget | None) -> None:
-        if root is None:
-            return
-        refresh_theme = getattr(root, 'refresh_theme', None)
-        if callable(refresh_theme):
-            refresh_theme()
-        for widget in root.findChildren(QWidget):
-            refresh_theme = getattr(widget, 'refresh_theme', None)
-            if callable(refresh_theme):
-                refresh_theme()
-
-    def _current_category_page(self) -> QWidget | None:
-        row = self.category_list.currentRow()
-        if 0 <= row < len(self._categories):
-            return self._categories[row].page
-        return self._categories[0].page if self._categories else None
 
     def _is_effectively_maximized(self) -> bool:
         return bool(self.windowState() & Qt.WindowState.WindowMaximized) or self.isFullScreen()

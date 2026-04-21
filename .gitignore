@@ -20,4 +20,5 @@ artifacts/
 .DS_Store
 Thumbs.db
 .local-notes/
+uv.lock
 

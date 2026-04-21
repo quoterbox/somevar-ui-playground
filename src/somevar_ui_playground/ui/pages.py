@@ -29,7 +29,7 @@ from somevar_ui_playground.ui.playground_support import (
     MarkdownShowcaseWidget,
     table_palette_for_theme,
 )
-from somevar_ui.ui.base import BaseWidget, hbox, vbox
+from somevar_ui.ui.kit.core import BaseWidget, hbox, vbox
 from somevar_ui.ui.charts import (
     PYQTGRAPH_AVAILABLE,
     BarSeriesSpec,
@@ -60,12 +60,6 @@ from somevar_ui.ui.kit.widgets import (
     LineEdit,
     ProgressBar,
     RadioButton,
-    Slider,
-    Switch,
-    install_capsule_scrollbars,
-)
-from somevar_ui.ui.lists import (
-    DragListConfig,
     ROUTE_ACTION_LABEL_ROLE,
     ROUTE_AUTOSIZE_ROLE,
     ROUTE_BACKGROUND_ROLE,
@@ -73,21 +67,24 @@ from somevar_ui.ui.lists import (
     ROUTE_COORDS_LABEL_ROLE,
     ROUTE_ROLE_LABEL_ROLE,
     ROUTE_TEXT_ROLE,
-    ReorderableListWidget,
+    SearchableSelect,
+    Slider,
+    Switch,
     TILE_BACKGROUND_ROLE,
     TILE_BORDER_ROLE,
     TILE_META_ROLE,
     TILE_SUBTITLE_ROLE,
     TILE_TEXT_ROLE,
     TILE_TITLE_ROLE,
+    DragListConfig,
+    ReorderableListWidget,
     TileReorderableListWidget,
 )
-from somevar_ui.core.runtime_state import get_ui_runtime_state
+from somevar_ui.core import get_ui_runtime_state
+from somevar_ui.ui.bootstrap import apply_theme
 from somevar_ui.ui.platform import windows as win_platform
-from somevar_ui.ui.shell.titlebar import TitleBar
-from somevar_ui.ui.styles import build_stylesheet
-from somevar_ui.ui.search_select import SearchableSelect
-from somevar_ui.ui.theme import THEME, set_theme_mode
+from somevar_ui.ui.shell import TitleBar
+from somevar_ui.ui.theme import THEME
 
 S = THEME.spacing
 L = THEME.layout
@@ -1999,11 +1996,7 @@ class StandaloneDemoWindow(QMainWindow):
         self._update_window_frame()
 
     def _apply_theme(self) -> None:
-        runtime = get_ui_runtime_state()
-        set_theme_mode(runtime.theme_mode)
-        self.setStyleSheet(build_stylesheet(runtime.ui_scale_percent, runtime.theme_mode))
-        install_capsule_scrollbars(self)
-        self._refresh_theme_tree(self.title_bar)
+        apply_theme(self)
 
     def _is_effectively_maximized(self) -> bool:
         return bool(self.windowState() & Qt.WindowState.WindowMaximized) or self.isFullScreen()
@@ -2019,17 +2012,6 @@ class StandaloneDemoWindow(QMainWindow):
         style.unpolish(widget)
         style.polish(widget)
         widget.update()
-
-    def _refresh_theme_tree(self, root: QWidget | None) -> None:
-        if root is None:
-            return
-        refresh_theme = getattr(root, 'refresh_theme', None)
-        if callable(refresh_theme):
-            refresh_theme()
-        for widget in root.findChildren(QWidget):
-            refresh_theme = getattr(widget, 'refresh_theme', None)
-            if callable(refresh_theme):
-                refresh_theme()
 
     def _update_window_frame(self) -> None:
         maximized = self._is_effectively_maximized()

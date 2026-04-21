@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from somevar_ui.ui.base import BaseWidget, hbox, vbox
+from somevar_ui.ui.kit.core import BaseWidget, hbox, vbox
 from somevar_ui.ui.kit.widgets import CheckBox, CodeBlock
 from somevar_ui.ui.theme import THEME, get_theme_mode
 
@@ -95,33 +95,35 @@ def _markdown_extensions() -> list[str]:
 def country_names() -> list[str]:
     names: set[str] = set()
 
-    language_any = getattr(QLocale.Language, 'AnyLanguage', None)
-    script_any = getattr(QLocale.Script, 'AnyScript', None)
-    territory_enum = getattr(QLocale, 'Territory', None)
-    territory_any = getattr(territory_enum, 'AnyTerritory', None)
+    territory_to_string = getattr(QLocale, 'territoryToString', None)
+    country_enum = getattr(QLocale, 'Country', ())
 
-    if language_any is not None and script_any is not None and territory_any is not None:
-        locales = QLocale.matchingLocales(language_any, script_any, territory_any)
-        for locale in locales:
-            territory_getter = getattr(locale, 'territory', None)
-            territory_to_string = getattr(locale, 'territoryToString', None)
-            if callable(territory_getter) and callable(territory_to_string):
-                territory = territory_getter()
-                name = territory_to_string(territory)
-                normalized = name.strip() if name else ''
-                if normalized and normalized.lower() not in {'any territory', 'anyterritory', 'lastterritory'}:
-                    names.add(normalized)
+    if callable(territory_to_string):
+        for territory in country_enum:
+            name = territory_to_string(territory)
+            normalized = name.strip() if name else ''
+            if normalized and normalized.lower() not in {
+                'any country',
+                'any territory',
+                'anycountry',
+                'anyterritory',
+                'lastcountry',
+                'lastterritory',
+            }:
+                names.add(normalized)
         if names:
             return sorted(names, key=str.casefold)
 
-    for country in QLocale.Country:
-        name = QLocale.countryToString(country)
-        if not name:
-            continue
-        normalized = name.strip()
-        if not normalized or normalized.lower() in {'any country', 'anycountry', 'lastcountry'}:
-            continue
-        names.add(normalized)
+    country_to_string = getattr(QLocale, 'countryToString', None)
+    if callable(country_to_string):
+        for country in country_enum:
+            name = country_to_string(country)
+            if not name:
+                continue
+            normalized = name.strip()
+            if not normalized or normalized.lower() in {'any country', 'anycountry', 'lastcountry'}:
+                continue
+            names.add(normalized)
     return sorted(names, key=str.casefold)
 
 
