@@ -24,9 +24,8 @@ from somevar_ui_playground.ui.pages import (
     create_simple_message_panel,
 )
 from somevar_ui.ui.bootstrap import apply_theme, refresh_theme_tree
-from somevar_ui.ui.kit.containers import CenteredModalOverlay, MessagePanel
+from somevar_ui.ui.kit.containers import CenteredModalOverlay, MessagePanel, PageHeader
 from somevar_ui.ui.kit.widgets import (
-    BadgeLabel,
     ComboBox,
     PROJECT_COUNT_ROLE,
     PROJECT_TITLE_ROLE,
@@ -56,7 +55,7 @@ class PlaygroundWindow(QMainWindow):
         self.resize(max(L.window_default_width, 1180), max(L.window_default_height, 760))
         self.setMinimumSize(980, 700)
 
-        self._window_frame_state: bool | None = None
+        self._window_frame_state: win_platform.WindowShellState | None = None
         self._modal_overlay: CenteredModalOverlay | None = None
         self._detached_windows: list[StandaloneDemoWindow] = []
         self._active_shell_menu: QMenu | None = None
@@ -156,17 +155,7 @@ class PlaygroundWindow(QMainWindow):
         )
         layout.setSpacing(S.xl)
 
-        top_row = QHBoxLayout()
-        top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(S.md)
-
-        self.hero_label = QLabel('UI Playground', panel)
-        self.hero_label.setProperty('role', 'hero')
-        self.count_badge = BadgeLabel('0 demos', panel)
-
-        top_row.addWidget(self.hero_label)
-        top_row.addWidget(self.count_badge, 0)
-        top_row.addStretch(1)
+        self.page_header = PageHeader('UI Playground', badge_text='0 demos', parent=panel)
 
         theme_label = QLabel('Theme', panel)
         theme_label.setProperty('role', 'caption')
@@ -176,12 +165,13 @@ class PlaygroundWindow(QMainWindow):
         self.theme_combo.currentIndexChanged.connect(self._theme_changed)
         self.theme_combo.setFixedWidth(150)
 
-        top_row.addWidget(theme_label, 0, Qt.AlignmentFlag.AlignVCenter)
-        top_row.addWidget(self.theme_combo, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        self.description_label = QLabel(panel)
-        self.description_label.setProperty('role', 'muted')
-        self.description_label.setWordWrap(True)
+        theme_controls = QWidget(panel)
+        theme_controls_layout = QHBoxLayout(theme_controls)
+        theme_controls_layout.setContentsMargins(0, 0, 0, 0)
+        theme_controls_layout.setSpacing(S.md)
+        theme_controls_layout.addWidget(theme_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        theme_controls_layout.addWidget(self.theme_combo, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.page_header.set_action_widgets([theme_controls])
 
         self._categories, self._category_stack = build_playground_categories(panel)
         self._modal_page = self._find_modal_page()
@@ -192,8 +182,7 @@ class PlaygroundWindow(QMainWindow):
 
         self._populate_category_list()
 
-        layout.addLayout(top_row)
-        layout.addWidget(self.description_label)
+        layout.addWidget(self.page_header)
         layout.addWidget(self._category_stack, 1)
         return panel
 
@@ -314,10 +303,11 @@ class PlaygroundWindow(QMainWindow):
     def _show_about_panel(self) -> None:
         if self._modal_overlay is not None:
             return
+        overlay_parent = self.centralWidget() or self._surface
         panel = MessagePanel(
             'About SomeVar UI Playground',
             'Playground demonstrates reusable SomeVar UI Kit controls, modal stacks and shell toggles.',
-            self._surface,
+            overlay_parent,
         )
         panel.dismissed.connect(self._close_active_modal)
         self._show_modal(panel, L.message_modal_width)
@@ -345,10 +335,10 @@ class PlaygroundWindow(QMainWindow):
         category = self._categories[row]
         self._category_stack.setCurrentIndex(row)
         refresh_theme_tree(category.page)
-        self.hero_label.setText(category.title)
+        self.page_header.set_title(category.title)
         demos_word = 'demo' if category.demo_count == 1 else 'demos'
-        self.count_badge.setText(f'{category.demo_count} {demos_word}')
-        self.description_label.setText(category.description)
+        self.page_header.set_badge_text(f'{category.demo_count} {demos_word}')
+        self.page_header.set_subtitle(category.description)
 
     def _theme_changed(self) -> None:
         mode = str(self.theme_combo.currentData() or 'dark')
@@ -371,7 +361,8 @@ class PlaygroundWindow(QMainWindow):
         self._show_modal(panel, L.message_modal_width)
 
     def _open_stack_modal(self) -> None:
-        panel = StackFlowPanel(self._surface)
+        overlay_parent = self.centralWidget() or self._surface
+        panel = StackFlowPanel(overlay_parent)
         panel.cancelled.connect(self._close_active_modal)
         self._show_modal(panel, L.settings_modal_width)
 
@@ -391,7 +382,8 @@ class PlaygroundWindow(QMainWindow):
     def _show_modal(self, content: QWidget, preferred_width: int) -> None:
         if self._modal_overlay is not None:
             return
-        overlay = CenteredModalOverlay(self._surface, content, preferred_width=preferred_width)
+        overlay_parent = self.centralWidget() or self._surface
+        overlay = CenteredModalOverlay(overlay_parent, content, preferred_width=preferred_width)
         install_capsule_scrollbars(content)
         install_capsule_scrollbars(overlay)
         overlay.closed.connect(self._active_modal_closed)
@@ -411,31 +403,27 @@ class PlaygroundWindow(QMainWindow):
         style.polish(widget)
         widget.update()
 
-    def _is_effectively_maximized(self) -> bool:
-        return bool(self.windowState() & Qt.WindowState.WindowMaximized) or self.isFullScreen()
-
-    def _native_frame_margin(self) -> int:
-        return win_platform.native_frame_margin(default=8)
-
     def _apply_native_window_corners(self) -> None:
-        win_platform.apply_window_corners(int(self.winId()), self._is_effectively_maximized())
+        win_platform.apply_window_corners(int(self.winId()), win_platform.resolve_window_shell_state(self))
 
     def _update_window_frame(self) -> None:
-        maximized = self._is_effectively_maximized()
-        if self._window_frame_state == maximized:
+        shell_state = win_platform.resolve_window_shell_state(self)
+        if self._window_frame_state == shell_state:
             return
-        self._window_frame_state = maximized
+        self._window_frame_state = shell_state
 
-        margin = L.window_frame_margin_maximized if maximized else L.window_frame_margin
-        if maximized:
-            margin = max(margin, self._native_frame_margin())
+        margin = win_platform.frame_margin_for_shell_state(
+            shell_state,
+            normal=L.window_frame_margin,
+            maximized=L.window_frame_margin_maximized,
+        )
         self._root_layout.setContentsMargins(margin, margin, margin, margin)
 
         root = self.centralWidget()
         for widget in (root, self._surface, self.title_bar):
             if widget is None:
                 continue
-            widget.setProperty('maximized', maximized)
+            win_platform.set_window_shell_state_properties(widget, shell_state)
             self._refresh_widget_style(widget)
 
         self._apply_native_window_corners()
@@ -445,8 +433,17 @@ class PlaygroundWindow(QMainWindow):
         if event.type() == QEvent.Type.WindowStateChange:
             self._update_window_frame()
 
+    def moveEvent(self, event) -> None:  # type: ignore[override]
+        super().moveEvent(event)
+        self._update_window_frame()
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._update_window_frame()
+
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
+        self._update_window_frame()
         self._apply_native_window_corners()
 
     def nativeEvent(self, event_type, message):  # type: ignore[override]
@@ -460,7 +457,7 @@ class PlaygroundWindow(QMainWindow):
         if msg is None or msg.message != win_platform.WM_NCHITTEST:
             return super().nativeEvent(event_type, message)
 
-        if self._is_effectively_maximized():
+        if not win_platform.should_use_custom_resize_hit(self):
             return super().nativeEvent(event_type, message)
 
         hit = win_platform.resolve_resize_hit(self, self.cursor().pos(), self.RESIZE_MARGIN)

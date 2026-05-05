@@ -1929,7 +1929,7 @@ class StandaloneDemoWindow(QMainWindow):
             )
         self.resize(620, 420)
         self.setMinimumSize(520, 340)
-        self._window_frame_state: bool | None = None
+        self._window_frame_state: win_platform.WindowShellState | None = None
 
         root = QWidget(self)
         root.setObjectName('WindowRoot')
@@ -1997,14 +1997,8 @@ class StandaloneDemoWindow(QMainWindow):
     def apply_runtime_theme(self, mode: str | None = None) -> None:
         apply_theme(self, theme_mode=mode)
 
-    def _is_effectively_maximized(self) -> bool:
-        return bool(self.windowState() & Qt.WindowState.WindowMaximized) or self.isFullScreen()
-
-    def _native_frame_margin(self) -> int:
-        return win_platform.native_frame_margin(default=8)
-
     def _apply_native_window_corners(self) -> None:
-        win_platform.apply_window_corners(int(self.winId()), self._is_effectively_maximized())
+        win_platform.apply_window_corners(int(self.winId()), win_platform.resolve_window_shell_state(self))
 
     def _refresh_widget_style(self, widget: QWidget) -> None:
         style = widget.style()
@@ -2013,21 +2007,23 @@ class StandaloneDemoWindow(QMainWindow):
         widget.update()
 
     def _update_window_frame(self) -> None:
-        maximized = self._is_effectively_maximized()
-        if self._window_frame_state == maximized:
+        shell_state = win_platform.resolve_window_shell_state(self)
+        if self._window_frame_state == shell_state:
             return
-        self._window_frame_state = maximized
+        self._window_frame_state = shell_state
 
-        margin = L.window_frame_margin_maximized if maximized else L.window_frame_margin
-        if maximized:
-            margin = max(margin, self._native_frame_margin())
+        margin = win_platform.frame_margin_for_shell_state(
+            shell_state,
+            normal=L.window_frame_margin,
+            maximized=L.window_frame_margin_maximized,
+        )
         self._root_layout.setContentsMargins(margin, margin, margin, margin)
 
         root = self.centralWidget()
         for widget in (root, self._surface, self.title_bar):
             if widget is None:
                 continue
-            widget.setProperty('maximized', maximized)
+            win_platform.set_window_shell_state_properties(widget, shell_state)
             self._refresh_widget_style(widget)
 
         self._apply_native_window_corners()
@@ -2037,8 +2033,17 @@ class StandaloneDemoWindow(QMainWindow):
         if event.type() == QEvent.Type.WindowStateChange:
             self._update_window_frame()
 
+    def moveEvent(self, event) -> None:  # type: ignore[override]
+        super().moveEvent(event)
+        self._update_window_frame()
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._update_window_frame()
+
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
+        self._update_window_frame()
         self._apply_native_window_corners()
 
     def nativeEvent(self, event_type, message):  # type: ignore[override]
@@ -2052,7 +2057,7 @@ class StandaloneDemoWindow(QMainWindow):
         if msg is None or msg.message != win_platform.WM_NCHITTEST:
             return super().nativeEvent(event_type, message)
 
-        if self._is_effectively_maximized():
+        if not win_platform.should_use_custom_resize_hit(self):
             return super().nativeEvent(event_type, message)
 
         hit = win_platform.resolve_resize_hit(self, self.cursor().pos(), self.RESIZE_MARGIN)
