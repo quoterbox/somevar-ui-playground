@@ -19,6 +19,10 @@ from PySide6.QtWidgets import (
 )
 
 from somevar_ui.ui.kit.core import BaseWidget, hbox, vbox
+from somevar_ui.ui.kit.tables import (
+    DataTableWidget as FrameworkDataTableWidget,
+    table_palette_for_theme as framework_table_palette_for_theme,
+)
 from somevar_ui.ui.kit.widgets import CheckBox, CodeBlock
 from somevar_ui.ui.theme import THEME, get_theme_mode
 
@@ -1116,6 +1120,12 @@ def table_palette_for_theme(mode: str | None = None) -> dict[str, str]:
         'body_text': '#E7F0F9',
         'row_hover_text': '#F9FBFE',
     }
+
+
+# Keep the playground on the framework-owned table implementation while the
+# support module is still being split into smaller pieces.
+DataTableWidget = FrameworkDataTableWidget
+table_palette_for_theme = framework_table_palette_for_theme
 
 
 def _inline_format(text: str) -> str:

@@ -24,10 +24,8 @@ from PySide6.QtWidgets import (
 )
 
 from somevar_ui_playground.ui.playground_support import (
-    DataTableWidget,
     country_names,
     MarkdownShowcaseWidget,
-    table_palette_for_theme,
 )
 from somevar_ui.ui.kit.core import BaseWidget, hbox, vbox
 from somevar_ui.ui.charts import (
@@ -44,6 +42,7 @@ from somevar_ui.ui.charts import (
 )
 from somevar_ui.ui.kit.containers import MessagePanel, ModalStack
 from somevar_ui.ui.kit.icons import AVAILABLE_ICONS, resolve_icon_name
+from somevar_ui.ui.kit.tables import DataTableWidget, table_palette_for_theme
 from somevar_ui.ui.kit.widgets import (
     ACCENT_BUTTON,
     SECONDARY_BUTTON,

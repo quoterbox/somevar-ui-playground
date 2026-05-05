@@ -14,6 +14,13 @@ FORBIDDEN_IMPORTS = {
     'somevar_ui.ui.shell.titlebar': 'use somevar_ui.ui.shell',
 }
 
+FORBIDDEN_LOCAL_FROM_IMPORTS = {
+    'somevar_ui_playground.ui.playground_support': {
+        'DataTableWidget': 'use somevar_ui.ui.kit.tables',
+        'table_palette_for_theme': 'use somevar_ui.ui.kit.tables',
+    },
+}
+
 
 def _iter_imported_modules(file_path: Path) -> list[str]:
     tree = ast.parse(file_path.read_text(encoding='utf-8'))
@@ -26,6 +33,15 @@ def _iter_imported_modules(file_path: Path) -> list[str]:
     return modules
 
 
+def _iter_from_import_names(file_path: Path) -> list[tuple[str, str]]:
+    tree = ast.parse(file_path.read_text(encoding='utf-8'))
+    imports: list[tuple[str, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            imports.extend((node.module, alias.name) for alias in node.names)
+    return imports
+
+
 def test_playground_uses_public_framework_imports() -> None:
     violations: list[str] = []
 
@@ -35,5 +51,9 @@ def test_playground_uses_public_framework_imports() -> None:
             replacement = FORBIDDEN_IMPORTS.get(module)
             if replacement is not None:
                 violations.append(f'{rel}: imports {module} ({replacement})')
+        for module, name in _iter_from_import_names(file_path):
+            replacement = FORBIDDEN_LOCAL_FROM_IMPORTS.get(module, {}).get(name)
+            if replacement is not None:
+                violations.append(f'{rel}: imports {name} from {module} ({replacement})')
 
     assert not violations, 'Internal framework imports:\n' + '\n'.join(sorted(violations))
