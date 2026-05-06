@@ -29,27 +29,27 @@ jobs:
 
     steps:
       - name: Check out playground
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: somevar-ui-playground
 
       - name: Check out SomeVar UI Kit
         if: ${{ env.SOMEVAR_UI_REPO_TOKEN == '' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: quoterbox/somevar-ui
           path: somevar-ui
 
       - name: Check out SomeVar UI Kit with token
         if: ${{ env.SOMEVAR_UI_REPO_TOKEN != '' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: quoterbox/somevar-ui
           path: somevar-ui
           token: ${{ env.SOMEVAR_UI_REPO_TOKEN }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
