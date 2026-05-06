@@ -15,6 +15,8 @@ def test_playground_window_smoke_offscreen() -> None:
     try:
         assert window.windowTitle() == 'SomeVar UI Playground'
         assert window.minimumWidth() > 0
+        assert window.theme_switch.theme_mode() == 'dark'
+        assert window.theme_switch.icon_name() == 'moon'
     finally:
         window.close()
         window.deleteLater()
@@ -38,6 +40,9 @@ def test_detached_window_follows_theme_changes() -> None:
         window._apply_theme('light')
 
         assert '#f4f7fb' in detached.styleSheet()
+        assert window.theme_switch.theme_mode() == 'light'
+        assert window.theme_switch.icon_name() == 'moon'
+        assert window.theme_switch.property('active') is False
     finally:
         for detached in list(window._detached_windows):
             detached.close()

@@ -29,10 +29,10 @@ from somevar_ui_playground.ui.pages import (
 from somevar_ui.ui.bootstrap import apply_theme, refresh_theme_tree
 from somevar_ui.ui.kit.containers import CenteredModalOverlay, MessagePanel, PageHeader
 from somevar_ui.ui.kit.widgets import (
-    ComboBox,
     PROJECT_COUNT_ROLE,
     PROJECT_TITLE_ROLE,
     ProjectItemDelegate,
+    ThemeSwitchButton,
     install_capsule_scrollbars,
 )
 from somevar_ui.ui.shell import TitleBar, WindowFrameController, handle_windows_native_event
@@ -164,21 +164,9 @@ class PlaygroundWindow(QMainWindow):
 
         self.page_header = PageHeader('UI Playground', badge_text='0 demos', parent=panel)
 
-        theme_label = QLabel('Theme', panel)
-        theme_label.setProperty('role', 'caption')
-        self.theme_combo = ComboBox(panel)
-        self.theme_combo.addItem('Dark', 'dark')
-        self.theme_combo.addItem('Light', 'light')
-        self.theme_combo.currentIndexChanged.connect(self._theme_changed)
-        self.theme_combo.setFixedWidth(150)
-
-        theme_controls = QWidget(panel)
-        theme_controls_layout = QHBoxLayout(theme_controls)
-        theme_controls_layout.setContentsMargins(0, 0, 0, 0)
-        theme_controls_layout.setSpacing(S.md)
-        theme_controls_layout.addWidget(theme_label, 0, Qt.AlignmentFlag.AlignVCenter)
-        theme_controls_layout.addWidget(self.theme_combo, 0, Qt.AlignmentFlag.AlignVCenter)
-        self.page_header.set_action_widgets([theme_controls])
+        self.theme_switch = ThemeSwitchButton('dark', parent=panel)
+        self.theme_switch.themeModeChanged.connect(self._apply_theme)
+        self.page_header.set_action_widgets([self.theme_switch])
 
         self._categories, self._category_stack = build_playground_categories(panel)
         self._modal_page = self._find_modal_page()
@@ -350,20 +338,11 @@ class PlaygroundWindow(QMainWindow):
         self.page_header.set_badge_text(f'{category.demo_count} {demos_word}')
         self.page_header.set_subtitle(category.description)
 
-    def _theme_changed(self) -> None:
-        mode = str(self.theme_combo.currentData() or 'dark')
-        self._apply_theme(mode)
-
     def _apply_theme(self, mode: str) -> None:
         normalized = apply_theme(self, theme_mode=mode)
         for detached_window in list(self._detached_windows):
             detached_window.apply_runtime_theme(normalized.theme_mode)
-
-        index = self.theme_combo.findData(normalized.theme_mode)
-        if index >= 0:
-            self.theme_combo.blockSignals(True)
-            self.theme_combo.setCurrentIndex(index)
-            self.theme_combo.blockSignals(False)
+        self.theme_switch.set_theme_mode(normalized.theme_mode)
 
     def _open_simple_modal(self) -> None:
         panel = create_simple_message_panel()
