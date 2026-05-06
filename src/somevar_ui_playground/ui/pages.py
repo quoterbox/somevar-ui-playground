@@ -1028,6 +1028,7 @@ class ListsCategoryPage(BaseWidget):
         self._quick_card_counter = 1
         self._custom_card_counter = 1
         self._custom_card_color = QColor('#3A84F7')
+        self._resizable_table_default_widths = [92, 300, 300, 132]
 
         table_card, table_layout = create_section(
             self,
@@ -1066,6 +1067,49 @@ class ListsCategoryPage(BaseWidget):
         )
         self._table_widgets.append(matrix_table)
         matrix_layout.addWidget(matrix_table)
+
+        resizable_card, resizable_layout = create_section(
+            self,
+            'Resizable columns',
+            'Long values stay elided until the user widens the relevant column. Widths can be restored from the framework API.',
+        )
+        self._resizable_table = DataTableWidget(
+            ['Run', 'Source path', 'Destination path', 'State'],
+            [
+                [
+                    'R-4108',
+                    'E:/datasets/customer-exports/2026/may/audit/full_snapshot_part_001.arrow',
+                    'D:/archive/somevar-ui/migration-results/customer_exports_snapshot_001.arrow',
+                    'Queued',
+                ],
+                [
+                    'R-4109',
+                    'E:/media/capture/session-58/raw/camera_left_8k_reference_plate.exr',
+                    'D:/renders/cache/session-58/plates/camera_left_8k_reference_plate.exr',
+                    'Copying',
+                ],
+                [
+                    'R-4110',
+                    'E:/builds/nightly/somevar-ui/windows/py313/somevar_ui-0.1.0-py3-none-any.whl',
+                    'D:/release-candidates/somevar-ui/windows/py313/somevar_ui-0.1.0-py3-none-any.whl',
+                    'Verified',
+                ],
+            ],
+            column_widths=self._resizable_table_default_widths,
+            min_column_widths=[68, 136, 136, 92],
+            hover_rows=True,
+            hover_columns=True,
+            row_height=38,
+            parent=resizable_card,
+        )
+        self._table_widgets.append(self._resizable_table)
+        reset_widths_row = hbox(spacing=S.md)
+        reset_widths_button = Button('Reset widths', SECONDARY_BUTTON, resizable_card)
+        reset_widths_button.clicked.connect(self._reset_resizable_table_widths)
+        reset_widths_row.addWidget(reset_widths_button)
+        reset_widths_row.addStretch(1)
+        resizable_layout.addWidget(self._resizable_table)
+        resizable_layout.addLayout(reset_widths_row)
 
         cards_card, cards_layout = create_section(
             self,
@@ -1407,6 +1451,7 @@ class ListsCategoryPage(BaseWidget):
 
         layout.addWidget(table_card)
         layout.addWidget(matrix_card)
+        layout.addWidget(resizable_card)
         layout.addWidget(cards_card)
         layout.addWidget(transfer_card)
         layout.addWidget(tile_card)
@@ -1418,6 +1463,9 @@ class ListsCategoryPage(BaseWidget):
         layout.addStretch(1)
         self._apply_table_palette()
         self._update_custom_color_preview()
+
+    def _reset_resizable_table_widths(self) -> None:
+        self._resizable_table.set_column_widths(self._resizable_table_default_widths)
 
     def refresh_theme(self) -> None:
         self._apply_table_palette()
@@ -2633,8 +2681,8 @@ def build_playground_categories(parent: QWidget) -> tuple[list[PlaygroundCategor
         PlaygroundCategory(
             category_id='data',
             title='Lists and tables',
-            description='Interactive tables and drag-and-drop card lists.',
-            demo_count=10,
+            description='Interactive tables with resizable columns and drag-and-drop card lists.',
+            demo_count=11,
             page=data_page,
         ),
         PlaygroundCategory(

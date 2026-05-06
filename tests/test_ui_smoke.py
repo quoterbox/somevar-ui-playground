@@ -106,6 +106,9 @@ def test_modal_size_policy_examples_are_distinct() -> None:
         assert elastic_policy.elastic_height is True
         assert elastic_policy.parent_width_ratio == 0.72
         assert categories[0].demo_count == 6
+        assert categories[4].demo_count == 11
+        assert len(categories[4].page._table_widgets) == 3
+        assert categories[4].page._resizable_table.resizable_columns() is True
         assert categories[-1].demo_count == 3
     finally:
         compact.deleteLater()
