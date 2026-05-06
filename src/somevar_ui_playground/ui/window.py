@@ -21,6 +21,8 @@ from somevar_ui_playground.ui.pages import (
     StackFlowPanel,
     StandaloneDemoWindow,
     build_playground_categories,
+    create_compact_fixed_modal_panel,
+    create_elastic_modal_panel,
     create_settings_form_panel,
     create_simple_message_panel,
 )
@@ -184,6 +186,8 @@ class PlaygroundWindow(QMainWindow):
             self._modal_page.open_simple_modal_requested.connect(self._open_simple_modal)
             self._modal_page.open_modal_stack_requested.connect(self._open_stack_modal)
             self._modal_page.open_settings_form_requested.connect(self._open_settings_form_modal)
+            self._modal_page.open_compact_modal_requested.connect(self._open_compact_modal)
+            self._modal_page.open_elastic_modal_requested.connect(self._open_elastic_modal)
             self._modal_page.open_detached_window_requested.connect(self._open_detached_window)
 
         self._populate_category_list()
@@ -374,6 +378,18 @@ class PlaygroundWindow(QMainWindow):
 
     def _open_settings_form_modal(self) -> None:
         panel = create_settings_form_panel()
+        panel.accepted.connect(self._close_active_modal)
+        panel.cancelled.connect(self._close_active_modal)
+        self._show_modal(panel, L.settings_modal_width)
+
+    def _open_compact_modal(self) -> None:
+        panel = create_compact_fixed_modal_panel()
+        panel.accepted.connect(self._close_active_modal)
+        panel.cancelled.connect(self._close_active_modal)
+        self._show_modal(panel, L.settings_modal_width)
+
+    def _open_elastic_modal(self) -> None:
+        panel = create_elastic_modal_panel()
         panel.accepted.connect(self._close_active_modal)
         panel.cancelled.connect(self._close_active_modal)
         self._show_modal(panel, L.settings_modal_width)

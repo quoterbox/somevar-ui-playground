@@ -40,7 +40,7 @@ from somevar_ui.ui.charts import (
     ScatterPointSpec,
     ScatterSeriesSpec,
 )
-from somevar_ui.ui.kit.containers import MessagePanel, ModalStack
+from somevar_ui.ui.kit.containers import MessagePanel, ModalSizePolicy, ModalStack
 from somevar_ui.ui.kit.dialogs import SettingsFormPanel
 from somevar_ui.ui.kit.icons import AVAILABLE_ICONS, resolve_icon_name
 from somevar_ui.ui.kit.tables import DataTableWidget, table_palette_for_theme
@@ -387,6 +387,8 @@ class ModalCategoryPage(BaseWidget):
     open_simple_modal_requested = Signal()
     open_modal_stack_requested = Signal()
     open_settings_form_requested = Signal()
+    open_compact_modal_requested = Signal()
+    open_elastic_modal_requested = Signal()
     open_detached_window_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -421,6 +423,24 @@ class ModalCategoryPage(BaseWidget):
         open_settings.clicked.connect(self.open_settings_form_requested.emit)
         settings_layout.addWidget(open_settings)
 
+        compact_card, compact_layout = create_section(
+            self,
+            'Compact fixed modal',
+            'Small non-elastic modal that keeps its preferred size even in a large parent window.',
+        )
+        open_compact = Button('Open compact modal', SECONDARY_BUTTON, compact_card)
+        open_compact.clicked.connect(self.open_compact_modal_requested.emit)
+        compact_layout.addWidget(open_compact)
+
+        elastic_card, elastic_layout = create_section(
+            self,
+            'Elastic parent-sized modal',
+            'Resizable modal that follows parent size ratios while preserving outer overlay space.',
+        )
+        open_elastic = Button('Open elastic modal', ACCENT_BUTTON, elastic_card)
+        open_elastic.clicked.connect(self.open_elastic_modal_requested.emit)
+        elastic_layout.addWidget(open_elastic)
+
         detached_card, detached_layout = create_section(
             self,
             'Standalone window',
@@ -439,6 +459,8 @@ class ModalCategoryPage(BaseWidget):
         layout.addWidget(simple_card)
         layout.addWidget(stack_card)
         layout.addWidget(settings_card)
+        layout.addWidget(compact_card)
+        layout.addWidget(elastic_card)
         layout.addWidget(detached_card)
         layout.addStretch(1)
 
@@ -2153,6 +2175,86 @@ def create_settings_form_panel() -> SettingsFormPanel:
     return panel
 
 
+def create_compact_fixed_modal_panel() -> SettingsFormPanel:
+    panel = SettingsFormPanel(
+        'Compact modal',
+        subtitle='Fixed policy: small preferred size, no elastic growth.',
+        accept_text='Apply',
+        size_policy=ModalSizePolicy(
+            preferred_width=310,
+            preferred_height=230,
+            min_width=280,
+            min_height=200,
+            max_width=340,
+            max_height=280,
+            outer_gap=56,
+        ),
+    )
+
+    quick = panel.add_section('Quick edit')
+    label_input = LineEdit(quick)
+    label_input.setPlaceholderText('Short label')
+    quick.add_field('Label', label_input)
+
+    mode_combo = ComboBox(quick)
+    mode_combo.addItem('Pinned', 'pinned')
+    mode_combo.addItem('Floating', 'floating')
+    quick.add_field('Mode', mode_combo)
+    return panel
+
+
+def create_elastic_modal_panel() -> SettingsFormPanel:
+    panel = SettingsFormPanel(
+        'Elastic modal',
+        subtitle='Elastic policy: follows the parent window with ratios and max bounds.',
+        accept_text='Save layout',
+        size_policy=ModalSizePolicy(
+            preferred_width=560,
+            preferred_height=360,
+            min_width=430,
+            min_height=320,
+            max_width=920,
+            max_height=640,
+            outer_gap=48,
+            elastic_width=True,
+            elastic_height=True,
+            parent_width_ratio=0.72,
+            parent_height_ratio=0.70,
+        ),
+    )
+
+    workspace = panel.add_section(
+        'Workspace',
+        description='This modal grows with the shell, but never consumes the whole overlay.',
+    )
+    title_input = LineEdit(workspace)
+    title_input.setPlaceholderText('Workspace title')
+    workspace.add_field('Title', title_input)
+
+    region_combo = ComboBox(workspace)
+    for country in country_names()[:10]:
+        region_combo.addItem(country, country)
+    workspace.add_field('Default region', region_combo)
+
+    notes = QPlainTextEdit(workspace)
+    notes.setPlaceholderText('Resize the main window and reopen this modal to compare the policy.')
+    notes.setFixedHeight(110)
+    workspace.add_field('Notes', notes)
+
+    behavior = panel.add_section('Behavior')
+    behavior.add_toggle(
+        'Use parent-relative sizing',
+        Switch(behavior),
+        description='Width and height use ratios, then clamp to explicit max bounds.',
+    )
+    behavior.add_toggle(
+        'Keep overlay margin visible',
+        Switch(behavior),
+        description='The modal cannot exceed the parent minus the configured outer gap.',
+    )
+    return panel
+
+
 def _wrap_page(parent: QWidget, page: QWidget) -> QScrollArea:
     scroll = QScrollArea(parent)
     scroll.setWidgetResizable(True)
@@ -2177,8 +2279,8 @@ def build_playground_categories(parent: QWidget) -> tuple[list[PlaygroundCategor
         PlaygroundCategory(
             category_id='modals',
             title='Modal windows',
-            description='Simple modal, modal chain, settings form and standalone top-level window examples.',
-            demo_count=4,
+            description='Simple modal, modal chain, size-policy forms and standalone top-level window examples.',
+            demo_count=6,
             page=modal_page,
         ),
         PlaygroundCategory(
@@ -2237,6 +2339,8 @@ __all__ = [
     'StackFlowPanel',
     'StandaloneDemoWindow',
     'build_playground_categories',
+    'create_compact_fixed_modal_panel',
+    'create_elastic_modal_panel',
     'create_settings_form_panel',
     'create_simple_message_panel',
 ]

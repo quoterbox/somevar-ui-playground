@@ -77,6 +77,41 @@ def test_modal_overlay_tracks_root_geometry() -> None:
         window.deleteLater()
 
 
+def test_modal_size_policy_examples_are_distinct() -> None:
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+
+    from PySide6.QtWidgets import QApplication
+
+    from somevar_ui.ui.kit.containers import ModalSizePolicy
+    from somevar_ui_playground.ui.pages import (
+        build_playground_categories,
+        create_compact_fixed_modal_panel,
+        create_elastic_modal_panel,
+    )
+
+    app = QApplication.instance() or QApplication([])
+    compact = create_compact_fixed_modal_panel()
+    elastic = create_elastic_modal_panel()
+    categories, stack = build_playground_categories(None)
+
+    try:
+        compact_policy = compact.property('modalSizePolicy')
+        elastic_policy = elastic.property('modalSizePolicy')
+
+        assert isinstance(compact_policy, ModalSizePolicy)
+        assert isinstance(elastic_policy, ModalSizePolicy)
+        assert compact_policy.elastic_width is False
+        assert compact_policy.max_width == 340
+        assert elastic_policy.elastic_width is True
+        assert elastic_policy.elastic_height is True
+        assert elastic_policy.parent_width_ratio == 0.72
+        assert categories[0].demo_count == 6
+    finally:
+        compact.deleteLater()
+        elastic.deleteLater()
+        stack.deleteLater()
+
+
 def test_snapped_window_frame_uses_zero_root_margins(monkeypatch) -> None:
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
