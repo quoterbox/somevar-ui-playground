@@ -41,6 +41,7 @@ from somevar_ui.ui.charts import (
     ScatterSeriesSpec,
 )
 from somevar_ui.ui.kit.containers import MessagePanel, ModalStack
+from somevar_ui.ui.kit.dialogs import SettingsFormPanel
 from somevar_ui.ui.kit.icons import AVAILABLE_ICONS, resolve_icon_name
 from somevar_ui.ui.kit.tables import DataTableWidget, table_palette_for_theme
 from somevar_ui.ui.kit.widgets import (
@@ -385,6 +386,7 @@ class PlaygroundCategory:
 class ModalCategoryPage(BaseWidget):
     open_simple_modal_requested = Signal()
     open_modal_stack_requested = Signal()
+    open_settings_form_requested = Signal()
     open_detached_window_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -410,6 +412,15 @@ class ModalCategoryPage(BaseWidget):
         open_stack.clicked.connect(self.open_modal_stack_requested.emit)
         stack_layout.addWidget(open_stack)
 
+        settings_card, settings_layout = create_section(
+            self,
+            'Settings form modal',
+            'Reusable framework panel for settings and form dialogs with sections, fields and footer actions.',
+        )
+        open_settings = Button('Open settings form', ACCENT_BUTTON, settings_card)
+        open_settings.clicked.connect(self.open_settings_form_requested.emit)
+        settings_layout.addWidget(open_settings)
+
         detached_card, detached_layout = create_section(
             self,
             'Standalone window',
@@ -427,6 +438,7 @@ class ModalCategoryPage(BaseWidget):
 
         layout.addWidget(simple_card)
         layout.addWidget(stack_card)
+        layout.addWidget(settings_card)
         layout.addWidget(detached_card)
         layout.addStretch(1)
 
@@ -2103,6 +2115,44 @@ def create_simple_message_panel() -> MessagePanel:
     return panel
 
 
+def create_settings_form_panel() -> SettingsFormPanel:
+    panel = SettingsFormPanel(
+        'Settings form demo',
+        subtitle='Reusable modal content from SomeVar UI Kit.',
+        preferred_width=L.settings_panel_preferred_width,
+        preferred_height=L.settings_panel_preferred_height,
+    )
+
+    profile = panel.add_section(
+        'Profile',
+        description='Common text fields and selectors arranged with the shared settings layout.',
+    )
+    name_input = LineEdit(profile)
+    name_input.setPlaceholderText('Type profile name')
+    profile.add_field('Profile name', name_input)
+
+    language_combo = ComboBox(profile)
+    for country in country_names()[:8]:
+        language_combo.addItem(country, country)
+    profile.add_field('Default region', language_combo)
+
+    behavior = panel.add_section('Behavior')
+    theme_combo = ComboBox(behavior)
+    theme_combo.addItem('Dark', 'dark')
+    theme_combo.addItem('Light', 'light')
+    behavior.add_field('Theme', theme_combo)
+
+    reduce_motion = Switch(behavior)
+    reduce_motion.setChecked(False)
+    behavior.add_toggle(
+        'Reduce animation motion',
+        reduce_motion,
+        description='Useful for accessibility and long-running operational tools.',
+    )
+
+    return panel
+
+
 def _wrap_page(parent: QWidget, page: QWidget) -> QScrollArea:
     scroll = QScrollArea(parent)
     scroll.setWidgetResizable(True)
@@ -2127,8 +2177,8 @@ def build_playground_categories(parent: QWidget) -> tuple[list[PlaygroundCategor
         PlaygroundCategory(
             category_id='modals',
             title='Modal windows',
-            description='Simple modal, modal chain and standalone top-level window examples.',
-            demo_count=3,
+            description='Simple modal, modal chain, settings form and standalone top-level window examples.',
+            demo_count=4,
             page=modal_page,
         ),
         PlaygroundCategory(
@@ -2187,5 +2237,6 @@ __all__ = [
     'StackFlowPanel',
     'StandaloneDemoWindow',
     'build_playground_categories',
+    'create_settings_form_panel',
     'create_simple_message_panel',
 ]
