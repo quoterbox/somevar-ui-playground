@@ -106,10 +106,35 @@ def test_modal_size_policy_examples_are_distinct() -> None:
         assert elastic_policy.elastic_height is True
         assert elastic_policy.parent_width_ratio == 0.72
         assert categories[0].demo_count == 6
+        assert categories[-1].demo_count == 3
     finally:
         compact.deleteLater()
         elastic.deleteLater()
         stack.deleteLater()
+
+
+def test_qthread_transfer_demo_worker_moves_demo_file(tmp_path) -> None:
+    from pathlib import Path
+
+    from somevar_ui.ui.kit.tasks import TaskContext
+    from somevar_ui_playground.ui.pages import _TRANSFER_DEMO_FILE_PREFIX, _run_throttled_file_transfer
+
+    source = tmp_path / 'source'
+    destination = tmp_path / 'destination'
+
+    result = _run_throttled_file_transfer(
+        TaskContext(),
+        source_dir=str(source),
+        destination_dir=str(destination),
+        size_mb=0.1,
+        speed_mb_s=64.0,
+    )
+
+    moved_file = Path(str(result['destination']))
+    assert moved_file.exists()
+    assert moved_file.name.startswith(_TRANSFER_DEMO_FILE_PREFIX)
+    assert moved_file.stat().st_size == result['bytes']
+    assert not any(source.iterdir())
 
 
 def test_snapped_window_frame_uses_zero_root_margins(monkeypatch) -> None:

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import cos, exp, sin
+from pathlib import Path
+import tempfile
+import time
 from typing import Final
+from uuid import uuid4
 
 from PySide6.QtCore import Qt, QTimer, QSize, Signal
 from PySide6.QtGui import QColor
@@ -16,6 +20,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPlainTextEdit,
     QColorDialog,
+    QFileDialog,
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
@@ -46,6 +51,7 @@ from somevar_ui.ui.kit.icons import AVAILABLE_ICONS, resolve_icon_name
 from somevar_ui.ui.kit.tables import DataTableWidget, table_palette_for_theme
 from somevar_ui.ui.kit.widgets import (
     ACCENT_BUTTON,
+    AsyncTaskRunner,
     SECONDARY_BUTTON,
     SURFACE_BUTTON,
     Button,
@@ -70,6 +76,9 @@ from somevar_ui.ui.kit.widgets import (
     SearchableSelect,
     Slider,
     Switch,
+    TaskCancelled,
+    TaskContext,
+    TaskProgress,
     TILE_BACKGROUND_ROLE,
     TILE_BORDER_ROLE,
     TILE_META_ROLE,
@@ -1753,6 +1762,101 @@ A second paragraph can contain practical guidance, short notes and emphasis with
     def refresh_theme(self) -> None:
         self._markdown_preview.refresh_theme()
 
+
+_TRANSFER_DEMO_FILE_PREFIX = 'somevar-ui-transfer-demo'
+
+
+def _format_bytes(size_bytes: int) -> str:
+    value = float(max(0, int(size_bytes)))
+    for unit in ('B', 'KB', 'MB', 'GB'):
+        if value < 1024 or unit == 'GB':
+            if unit == 'B':
+                return f'{int(value)} {unit}'
+            return f'{value:.1f} {unit}'
+        value /= 1024
+    return f'{value:.1f} GB'
+
+
+def _run_throttled_file_transfer(
+    context: TaskContext,
+    *,
+    source_dir: str,
+    destination_dir: str,
+    size_mb: float,
+    speed_mb_s: float,
+) -> dict[str, object]:
+    source_path = Path(source_dir).expanduser()
+    destination_path = Path(destination_dir).expanduser()
+    if source_path.resolve() == destination_path.resolve():
+        raise ValueError('Source and destination folders must be different.')
+
+    source_path.mkdir(parents=True, exist_ok=True)
+    destination_path.mkdir(parents=True, exist_ok=True)
+
+    size_bytes = max(1024, int(max(0.1, size_mb) * 1024 * 1024))
+    speed_bytes = max(1, int(max(0.1, speed_mb_s) * 1024 * 1024))
+    chunk_size = min(1024 * 1024, max(64 * 1024, speed_bytes // 8))
+
+    file_name = f'{_TRANSFER_DEMO_FILE_PREFIX}-{uuid4().hex[:8]}.bin'
+    source_file = source_path / file_name
+    destination_file = destination_path / file_name
+    partial_file = destination_path / f'{file_name}.part'
+    payload = bytes(range(256)) * 4096
+
+    try:
+        partial_file.unlink(missing_ok=True)
+        context.report_progress(0, 100, f'Generating {_format_bytes(size_bytes)} demo file...')
+        written = 0
+        with source_file.open('wb') as writer:
+            while written < size_bytes:
+                context.raise_if_cancelled()
+                chunk = payload[: min(len(payload), size_bytes - written)]
+                writer.write(chunk)
+                written += len(chunk)
+                context.report_progress(
+                    round((written / size_bytes) * 25),
+                    100,
+                    f'Generating {_format_bytes(written)} of {_format_bytes(size_bytes)}...',
+                )
+
+        copied = 0
+        started_at = time.monotonic()
+        context.report_progress(25, 100, f'Moving demo file at {speed_mb_s:.2f} MB/s...')
+        with source_file.open('rb') as reader, partial_file.open('wb') as writer:
+            while True:
+                context.raise_if_cancelled()
+                chunk = reader.read(chunk_size)
+                if not chunk:
+                    break
+                writer.write(chunk)
+                copied += len(chunk)
+                context.report_progress(
+                    25 + round((copied / size_bytes) * 75),
+                    100,
+                    f'Moving {_format_bytes(copied)} of {_format_bytes(size_bytes)} at {speed_mb_s:.2f} MB/s...',
+                )
+                expected_elapsed = copied / speed_bytes
+                actual_elapsed = time.monotonic() - started_at
+                if expected_elapsed > actual_elapsed:
+                    context.sleep(expected_elapsed - actual_elapsed)
+
+        partial_file.replace(destination_file)
+        source_file.unlink(missing_ok=True)
+        context.report_progress(100, 100, 'Transfer finished.')
+        return {
+            'bytes': size_bytes,
+            'destination': str(destination_file),
+            'speed_mb_s': float(speed_mb_s),
+        }
+    except TaskCancelled:
+        partial_file.unlink(missing_ok=True)
+        source_file.unlink(missing_ok=True)
+        raise
+    except Exception:
+        partial_file.unlink(missing_ok=True)
+        raise
+
+
 class LoadingCategoryPage(BaseWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent, spacing=S.xl)
@@ -1767,6 +1871,10 @@ class LoadingCategoryPage(BaseWidget):
         self._upload_timer = QTimer(self)
         self._upload_timer.setInterval(50)
         self._upload_timer.timeout.connect(self._tick_upload)
+        self._transfer_runner: AsyncTaskRunner | None = None
+        transfer_root = Path(tempfile.gettempdir()) / 'somevar-ui-transfer-demo'
+        self._transfer_source_dir = transfer_root / 'source'
+        self._transfer_destination_dir = transfer_root / 'destination'
 
         progress_card, progress_layout = create_section(
             self,
@@ -1838,9 +1946,227 @@ class LoadingCategoryPage(BaseWidget):
         drop_layout.addWidget(self.drop_status)
         self.drop_start_button.setEnabled(False)
 
+        transfer_card, transfer_layout = create_section(
+            self,
+            'QThread file transfer',
+            'Generate a demo file and move it between folders with cooperative cancellation and throttled progress.',
+        )
+        source_row = hbox(spacing=S.md)
+        source_label = QLabel('Source folder', transfer_card)
+        source_label.setProperty('role', 'caption')
+        self.transfer_source_input = LineEdit(transfer_card)
+        self.transfer_source_input.setText(str(self._transfer_source_dir))
+        self.transfer_source_input.setPlaceholderText('Choose source folder')
+        self.transfer_source_button = Button('Browse source', SECONDARY_BUTTON, transfer_card)
+        self.transfer_source_button.clicked.connect(self._browse_transfer_source)
+        source_row.addWidget(source_label)
+        source_row.addWidget(self.transfer_source_input, 1)
+        source_row.addWidget(self.transfer_source_button)
+
+        destination_row = hbox(spacing=S.md)
+        destination_label = QLabel('Destination folder', transfer_card)
+        destination_label.setProperty('role', 'caption')
+        self.transfer_destination_input = LineEdit(transfer_card)
+        self.transfer_destination_input.setText(str(self._transfer_destination_dir))
+        self.transfer_destination_input.setPlaceholderText('Choose destination folder')
+        self.transfer_destination_button = Button('Browse destination', SECONDARY_BUTTON, transfer_card)
+        self.transfer_destination_button.clicked.connect(self._browse_transfer_destination)
+        destination_row.addWidget(destination_label)
+        destination_row.addWidget(self.transfer_destination_input, 1)
+        destination_row.addWidget(self.transfer_destination_button)
+
+        transfer_settings_row = hbox(spacing=S.xl)
+        size_field = QWidget(transfer_card)
+        size_layout = vbox(size_field, spacing=S.xs)
+        size_layout.setContentsMargins(0, 0, 0, 0)
+        size_label = QLabel('Demo size', size_field)
+        size_label.setProperty('role', 'caption')
+        self.transfer_size_input = DoubleSpinBox(size_field)
+        self.transfer_size_input.setRange(1.0, 512.0)
+        self.transfer_size_input.setDecimals(0)
+        self.transfer_size_input.setSingleStep(8.0)
+        self.transfer_size_input.setValue(32.0)
+        self.transfer_size_input.setSuffix(' MB')
+        size_layout.addWidget(size_label)
+        size_layout.addWidget(self.transfer_size_input)
+
+        speed_field = QWidget(transfer_card)
+        speed_layout = vbox(speed_field, spacing=S.xs)
+        speed_layout.setContentsMargins(0, 0, 0, 0)
+        speed_label = QLabel('Speed limit', speed_field)
+        speed_label.setProperty('role', 'caption')
+        self.transfer_speed_input = DoubleSpinBox(speed_field)
+        self.transfer_speed_input.setRange(0.25, 128.0)
+        self.transfer_speed_input.setDecimals(2)
+        self.transfer_speed_input.setSingleStep(1.0)
+        self.transfer_speed_input.setValue(8.0)
+        self.transfer_speed_input.setSuffix(' MB/s')
+        speed_layout.addWidget(speed_label)
+        speed_layout.addWidget(self.transfer_speed_input)
+
+        transfer_settings_row.addWidget(size_field)
+        transfer_settings_row.addWidget(speed_field)
+        transfer_settings_row.addStretch(1)
+
+        self.transfer_progress = ProgressBar(transfer_card)
+        self.transfer_progress.setRange(0, 100)
+        self.transfer_progress.setValue(0)
+        transfer_progress_row = hbox(spacing=S.md)
+        self.transfer_progress_value = QLabel('0%', transfer_card)
+        self.transfer_progress_value.setProperty('role', 'subsection')
+        self.transfer_progress_value.setFixedWidth(L.percent_value_width)
+        transfer_progress_row.addWidget(self.transfer_progress, 1)
+        transfer_progress_row.addWidget(self.transfer_progress_value)
+
+        transfer_controls_row = hbox(spacing=S.md)
+        self.transfer_start_button = Button('Generate and move demo file', ACCENT_BUTTON, transfer_card)
+        self.transfer_cancel_button = Button('Cancel transfer', SECONDARY_BUTTON, transfer_card)
+        self.transfer_reset_button = Button('Reset transfer', SECONDARY_BUTTON, transfer_card)
+        self.transfer_cancel_button.setEnabled(False)
+        self.transfer_start_button.clicked.connect(self._start_transfer_demo)
+        self.transfer_cancel_button.clicked.connect(self._cancel_transfer_demo)
+        self.transfer_reset_button.clicked.connect(self._reset_transfer_demo)
+        transfer_controls_row.addWidget(self.transfer_start_button)
+        transfer_controls_row.addWidget(self.transfer_cancel_button)
+        transfer_controls_row.addWidget(self.transfer_reset_button)
+        transfer_controls_row.addStretch(1)
+
+        self.transfer_status = QLabel('Ready to generate a demo file and move it on a background QThread.', transfer_card)
+        self.transfer_status.setProperty('role', 'muted')
+        self.transfer_status.setWordWrap(True)
+
+        transfer_layout.addLayout(source_row)
+        transfer_layout.addLayout(destination_row)
+        transfer_layout.addLayout(transfer_settings_row)
+        transfer_layout.addLayout(transfer_progress_row)
+        transfer_layout.addLayout(transfer_controls_row)
+        transfer_layout.addWidget(self.transfer_status)
+
         layout.addWidget(progress_card)
         layout.addWidget(drop_card)
+        layout.addWidget(transfer_card)
         layout.addStretch(1)
+
+    def _browse_transfer_source(self) -> None:
+        self._browse_transfer_folder(
+            self.transfer_source_input,
+            'Select source folder for the generated demo file',
+        )
+
+    def _browse_transfer_destination(self) -> None:
+        self._browse_transfer_folder(
+            self.transfer_destination_input,
+            'Select destination folder for the moved demo file',
+        )
+
+    def _browse_transfer_folder(self, target: LineEdit, title: str) -> None:
+        selected = QFileDialog.getExistingDirectory(self, title, target.text().strip())
+        if selected:
+            target.setText(selected)
+
+    def _start_transfer_demo(self) -> None:
+        if self._transfer_runner is not None and self._transfer_runner.is_running():
+            return
+
+        source_dir = self.transfer_source_input.text().strip()
+        destination_dir = self.transfer_destination_input.text().strip()
+        if not source_dir or not destination_dir:
+            self.transfer_status.setText('Choose both source and destination folders.')
+            return
+        if Path(source_dir).expanduser().resolve() == Path(destination_dir).expanduser().resolve():
+            self.transfer_status.setText('Source and destination folders must be different.')
+            return
+
+        size_mb = float(self.transfer_size_input.value())
+        speed_mb_s = float(self.transfer_speed_input.value())
+
+        def task(context: TaskContext) -> dict[str, object]:
+            return _run_throttled_file_transfer(
+                context,
+                source_dir=source_dir,
+                destination_dir=destination_dir,
+                size_mb=size_mb,
+                speed_mb_s=speed_mb_s,
+            )
+
+        runner = AsyncTaskRunner(task, self)
+        runner.progressChanged.connect(self._on_transfer_progress)
+        runner.finished.connect(self._on_transfer_finished)
+        runner.failed.connect(self._on_transfer_failed)
+        runner.cancelled.connect(self._on_transfer_cancelled)
+        self._transfer_runner = runner
+        self._set_transfer_running(True)
+        self.transfer_progress.setIndeterminate(False)
+        self.transfer_progress.setRange(0, 100)
+        self.transfer_progress.setValue(0)
+        self.transfer_progress_value.setText('0%')
+        self.transfer_status.setText('Starting background transfer...')
+        runner.start()
+
+    def _cancel_transfer_demo(self) -> None:
+        if self._transfer_runner is None or not self._transfer_runner.is_running():
+            return
+        self.transfer_status.setText('Cancelling transfer...')
+        self._transfer_runner.cancel()
+
+    def _reset_transfer_demo(self) -> None:
+        if self._transfer_runner is not None and self._transfer_runner.is_running():
+            self._cancel_transfer_demo()
+            return
+        self.transfer_progress.setIndeterminate(False)
+        self.transfer_progress.setRange(0, 100)
+        self.transfer_progress.setValue(0)
+        self.transfer_progress_value.setText('0%')
+        self.transfer_status.setText('Ready to generate a demo file and move it on a background QThread.')
+
+    def _set_transfer_running(self, running: bool) -> None:
+        self.transfer_source_input.setEnabled(not running)
+        self.transfer_destination_input.setEnabled(not running)
+        self.transfer_source_button.setEnabled(not running)
+        self.transfer_destination_button.setEnabled(not running)
+        self.transfer_size_input.setEnabled(not running)
+        self.transfer_speed_input.setEnabled(not running)
+        self.transfer_start_button.setEnabled(not running)
+        self.transfer_cancel_button.setEnabled(running)
+        self.transfer_reset_button.setEnabled(not running)
+
+    def _on_transfer_progress(self, progress: TaskProgress) -> None:
+        self.transfer_progress.setIndeterminate(progress.indeterminate)
+        if progress.indeterminate:
+            self.transfer_progress_value.setText('Auto')
+        else:
+            self.transfer_progress.setRange(0, progress.maximum)
+            self.transfer_progress.setValue(progress.value)
+            self.transfer_progress_value.setText(f'{progress.percent}%')
+        if progress.message:
+            self.transfer_status.setText(progress.message)
+
+    def _on_transfer_finished(self, result: object) -> None:
+        self.transfer_progress.setIndeterminate(False)
+        self.transfer_progress.setRange(0, 100)
+        self.transfer_progress.setValue(100)
+        self.transfer_progress_value.setText('100%')
+        self._set_transfer_running(False)
+        self._transfer_runner = None
+
+        if isinstance(result, dict):
+            size = _format_bytes(int(result.get('bytes', 0)))
+            destination = str(result.get('destination', 'destination folder'))
+            self.transfer_status.setText(f'Moved {size} demo file to {destination}.')
+            return
+        self.transfer_status.setText('Transfer finished.')
+
+    def _on_transfer_failed(self, message: str, _details: str) -> None:
+        self.transfer_progress.setIndeterminate(False)
+        self._set_transfer_running(False)
+        self._transfer_runner = None
+        self.transfer_status.setText(f'Transfer failed: {message}')
+
+    def _on_transfer_cancelled(self) -> None:
+        self.transfer_progress.setIndeterminate(False)
+        self._set_transfer_running(False)
+        self._transfer_runner = None
+        self.transfer_status.setText('Transfer cancelled. Partial demo files were removed.')
 
     def _toggle_indeterminate(self, checked: bool) -> None:
         self.progress.setIndeterminate(checked)
@@ -2321,8 +2647,8 @@ def build_playground_categories(parent: QWidget) -> tuple[list[PlaygroundCategor
         PlaygroundCategory(
             category_id='loading',
             title='Loading and async states',
-            description='Progress bars, long-task simulation and drag-and-drop upload zone.',
-            demo_count=2,
+            description='Progress bars, long-task simulation, drag-and-drop upload and QThread file transfer.',
+            demo_count=3,
             page=loading_page,
         ),
     ]
