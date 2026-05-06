@@ -54,6 +54,7 @@ from somevar_ui.ui.kit.widgets import (
     AsyncTaskRunner,
     SECONDARY_BUTTON,
     SURFACE_BUTTON,
+    WARM_BUTTON,
     Button,
     CheckBox,
     CodeBlock,
@@ -317,6 +318,7 @@ class IconsCategoryPage(BaseWidget):
             ('Surface', SURFACE_BUTTON, 'folder'),
             ('Accent', ACCENT_BUTTON, 'play'),
             ('Secondary', SECONDARY_BUTTON, 'search'),
+            ('Warm', WARM_BUTTON, 'moon'),
         )
         for label_text, palette, icon_name in palette_specs:
             sample = QWidget(buttons_card)
