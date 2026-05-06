@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QPoint, QSize, Qt
+from PySide6.QtCore import QPoint, QSize, Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFrame,
@@ -32,8 +32,7 @@ from somevar_ui.ui.kit.widgets import (
     ProjectItemDelegate,
     install_capsule_scrollbars,
 )
-from somevar_ui.ui.platform import windows as win_platform
-from somevar_ui.ui.shell import TitleBar
+from somevar_ui.ui.shell import TitleBar, WindowFrameController, handle_windows_native_event
 from somevar_ui.ui.theme import THEME
 
 S = THEME.spacing
@@ -45,6 +44,7 @@ class PlaygroundWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
+        self._window_frame_controller: WindowFrameController | None = None
         self.setWindowTitle('SomeVar UI Playground')
         self.setWindowFlags(
             Qt.WindowType.Window
@@ -55,7 +55,6 @@ class PlaygroundWindow(QMainWindow):
         self.resize(max(L.window_default_width, 1180), max(L.window_default_height, 760))
         self.setMinimumSize(980, 700)
 
-        self._window_frame_state: win_platform.WindowShellState | None = None
         self._modal_overlay: CenteredModalOverlay | None = None
         self._detached_windows: list[StandaloneDemoWindow] = []
         self._active_shell_menu: QMenu | None = None
@@ -109,6 +108,11 @@ class PlaygroundWindow(QMainWindow):
         surface_layout.addWidget(body, 1)
         self._root_layout.addWidget(self._surface, 1)
         self.setCentralWidget(root)
+        self._window_frame_controller = WindowFrameController(
+            self,
+            self._root_layout,
+            (root, self._surface, self.title_bar),
+        )
         self._apply_shell_layout()
 
     def _build_sidebar(self, parent: QWidget) -> QWidget:
@@ -397,41 +401,16 @@ class PlaygroundWindow(QMainWindow):
     def _active_modal_closed(self) -> None:
         self._modal_overlay = None
 
-    def _refresh_widget_style(self, widget: QWidget) -> None:
-        style = widget.style()
-        style.unpolish(widget)
-        style.polish(widget)
-        widget.update()
-
-    def _apply_native_window_corners(self) -> None:
-        win_platform.apply_window_corners(int(self.winId()), win_platform.resolve_window_shell_state(self))
-
-    def _update_window_frame(self) -> None:
-        shell_state = win_platform.resolve_window_shell_state(self)
-        if self._window_frame_state == shell_state:
-            return
-        self._window_frame_state = shell_state
-
-        margin = win_platform.frame_margin_for_shell_state(
-            shell_state,
-            normal=L.window_frame_margin,
-            maximized=L.window_frame_margin_maximized,
-        )
-        self._root_layout.setContentsMargins(margin, margin, margin, margin)
-
-        root = self.centralWidget()
-        for widget in (root, self._surface, self.title_bar):
-            if widget is None:
-                continue
-            win_platform.set_window_shell_state_properties(widget, shell_state)
-            self._refresh_widget_style(widget)
-
-        self._apply_native_window_corners()
+    def _update_window_frame(self, *, force: bool = False) -> None:
+        controller = getattr(self, '_window_frame_controller', None)
+        if controller is not None:
+            controller.update(force=force)
 
     def changeEvent(self, event) -> None:  # type: ignore[override]
         super().changeEvent(event)
-        if event.type() == QEvent.Type.WindowStateChange:
-            self._update_window_frame()
+        controller = getattr(self, '_window_frame_controller', None)
+        if controller is not None:
+            controller.handle_change_event(event)
 
     def moveEvent(self, event) -> None:  # type: ignore[override]
         super().moveEvent(event)
@@ -443,24 +422,10 @@ class PlaygroundWindow(QMainWindow):
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
-        self._update_window_frame()
-        self._apply_native_window_corners()
+        self._update_window_frame(force=True)
 
     def nativeEvent(self, event_type, message):  # type: ignore[override]
-        if not win_platform.IS_WIN32:
-            return super().nativeEvent(event_type, message)
-
-        msg = win_platform.native_message_from_pointer(message)
-        if win_platform.is_nccalcsize_message(msg):
-            return True, 0
-
-        if msg is None or msg.message != win_platform.WM_NCHITTEST:
-            return super().nativeEvent(event_type, message)
-
-        if not win_platform.should_use_custom_resize_hit(self):
-            return super().nativeEvent(event_type, message)
-
-        hit = win_platform.resolve_resize_hit(self, self.cursor().pos(), self.RESIZE_MARGIN)
-        if hit is not None:
-            return True, hit
+        handled = handle_windows_native_event(self, message, resize_margin=self.RESIZE_MARGIN)
+        if handled is not None:
+            return handled
         return super().nativeEvent(event_type, message)
